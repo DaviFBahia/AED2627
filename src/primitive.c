@@ -305,7 +305,7 @@ bool polygon_add_vertex(Primitive* p, Point pt) {
 }
 
 bool polygon_remove_vertex(Primitive* p, size_t index) {
-  if (p == NULL || index < 0 || index >= p->geom.polygon.num_vertices) {
+  if (p == NULL || index < 0 || index >= p->geom.polygon.num_vertices || p->type != PRIM_POLYGON) {
     return false;
   }
   for (size_t i = index; i+1 < p->geom.polygon.num_vertices; i++) {
