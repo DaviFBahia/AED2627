@@ -284,6 +284,19 @@ bool vector_scene_set_z_index(VectorScene* scene, int id, int new_z_index) {
  */
 static void insertion_sort_by_z(Primitive** arr, size_t count,
                                 SortStats* stats) {
+
+  if ( count < 2) {
+    return; // se for menos de 2 elementos, ja está ordenado
+  }
+
+  for (size_t i = 1; i <count; i++) {
+    Primitive* chave = arr[i];
+    size_t j = i;
+
+    while(j < 0) {
+      
+    }
+  }
   // TODO: Implement Insertion Sort by z_index
   // - Handle edge cases (count < 2).
   // - Iterate through elements from index 1 to count - 1.
