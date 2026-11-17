@@ -22,6 +22,9 @@
 
 #include "primitive_internal.h"
 
+// A AABB inclui a tolerancia usada no teste de pertenca ao segmento.
+#define TOLERANCIA_SEGMENTO 1.0
+
 // ============================================================================
 // HELPER GEOMETRIC MATH FUNCTIONS (PROVIDED)
 // ============================================================================
@@ -335,19 +338,37 @@ void primitive_update_aabb(Primitive* p) {
       break;
 
     case PRIM_RECTANGLE:
-      /* TODO: Compute AABB for Rectangle
-       */
+      p->aabb.min = p->geom.rectangle.top_left;
+      p->aabb.max.x = p->aabb.min.x + p->geom.rectangle.width;
+      p->aabb.max.y = p->aabb.min.y + p->geom.rectangle.height;
       break;
 
     case PRIM_SEGMENT:
-      /* TODO: Compute AABB for Segment
-       */
+      p->aabb.min.x = fmin(p->geom.segment.p1.x, p->geom.segment.p2.x)
+                      - TOLERANCIA_SEGMENTO;
+      p->aabb.min.y = fmin(p->geom.segment.p1.y, p->geom.segment.p2.y)
+                      - TOLERANCIA_SEGMENTO;
+      p->aabb.max.x = fmax(p->geom.segment.p1.x, p->geom.segment.p2.x)
+                      + TOLERANCIA_SEGMENTO;
+      p->aabb.max.y = fmax(p->geom.segment.p1.y, p->geom.segment.p2.y)
+                      + TOLERANCIA_SEGMENTO;
       break;
 
     case PRIM_POLYGON:
-      /* TODO: Compute AABB for Polygon
-       * Iterate vertices array to find min/max coordinates
-       */
+      // Poligono vazio: AABB na origem.
+      p->aabb.min = (Point){0.0, 0.0};
+      p->aabb.max = (Point){0.0, 0.0};
+      if (p->geom.polygon.num_vertices > 0) {
+        p->aabb.min = p->geom.polygon.vertices[0];
+        p->aabb.max = p->geom.polygon.vertices[0];
+        for (size_t i = 1; i < p->geom.polygon.num_vertices; i++) {
+          Point vertice = p->geom.polygon.vertices[i];
+          p->aabb.min.x = fmin(p->aabb.min.x, vertice.x);
+          p->aabb.min.y = fmin(p->aabb.min.y, vertice.y);
+          p->aabb.max.x = fmax(p->aabb.max.x, vertice.x);
+          p->aabb.max.y = fmax(p->aabb.max.y, vertice.y);
+        }
+      }
       break;
   }
 
@@ -359,16 +380,29 @@ void primitive_translate(Primitive* p, double dx, double dy) {
     return;
   }
 
-  /* TODO: Student Implementation
-   * Translate geometry based on p->type:
-   * - PRIM_CIRCLE: translate the center
-   * - PRIM_RECTANGLE: translate top-left vertex
-   * - PRIM_SEGMENT: translate both endpoints
-   * - PRIM_POLYGON: translate each vertex
-   * Set p->is_aabb_dirty = true
-   */
-  (void)dx;
-  (void)dy;
+  switch (p->type) {
+    case PRIM_CIRCLE:
+      p->geom.circle.center.x += dx;
+      p->geom.circle.center.y += dy;
+      break;
+    case PRIM_RECTANGLE:
+      p->geom.rectangle.top_left.x += dx;
+      p->geom.rectangle.top_left.y += dy;
+      break;
+    case PRIM_SEGMENT:
+      p->geom.segment.p1.x += dx;
+      p->geom.segment.p1.y += dy;
+      p->geom.segment.p2.x += dx;
+      p->geom.segment.p2.y += dy;
+      break;
+    case PRIM_POLYGON:
+      for (size_t i = 0; i < p->geom.polygon.num_vertices; i++) {
+        p->geom.polygon.vertices[i].x += dx;
+        p->geom.polygon.vertices[i].y += dy;
+      }
+      break;
+  }
+  p->is_aabb_dirty = true;
 }
 
 void primitive_scale(Primitive* p, double factor) {
@@ -376,15 +410,42 @@ void primitive_scale(Primitive* p, double factor) {
     return;
   }
 
-  /* TODO: Student Implementation
-   * Scale geometry based on p->type:
-   * - PRIM_CIRCLE: radius *= factor
-   * - PRIM_RECTANGLE: width *= factor, height *= factor
-   * - PRIM_SEGMENT: scale endpoints relative to midpoint
-   * - PRIM_POLYGON: scale vertices relative to polygon bounding box center
-   * Set p->is_aabb_dirty = true
-   */
-  (void)factor;
+  switch (p->type) {
+    case PRIM_CIRCLE:
+      p->geom.circle.radius *= factor;
+      break;
+    case PRIM_RECTANGLE:
+      p->geom.rectangle.width *= factor;
+      p->geom.rectangle.height *= factor;
+      break;
+    case PRIM_SEGMENT: {
+      Point centro = {
+          p->geom.segment.p1.x / 2.0 + p->geom.segment.p2.x / 2.0,
+          p->geom.segment.p1.y / 2.0 + p->geom.segment.p2.y / 2.0};
+      p->geom.segment.p1.x = centro.x +
+          (p->geom.segment.p1.x - centro.x) * factor;
+      p->geom.segment.p1.y = centro.y +
+          (p->geom.segment.p1.y - centro.y) * factor;
+      p->geom.segment.p2.x = centro.x +
+          (p->geom.segment.p2.x - centro.x) * factor;
+      p->geom.segment.p2.y = centro.y +
+          (p->geom.segment.p2.y - centro.y) * factor;
+      break;
+    }
+    case PRIM_POLYGON: {
+      // Atualiza a AABB antes de calcular o centro da escala.
+      BoundingBox caixa = primitive_get_aabb(p);
+      Point centro = {caixa.min.x / 2.0 + caixa.max.x / 2.0,
+                      caixa.min.y / 2.0 + caixa.max.y / 2.0};
+      for (size_t i = 0; i < p->geom.polygon.num_vertices; i++) {
+        Point* vertice = &p->geom.polygon.vertices[i];
+        vertice->x = centro.x + (vertice->x - centro.x) * factor;
+        vertice->y = centro.y + (vertice->y - centro.y) * factor;
+      }
+      break;
+    }
+  }
+  p->is_aabb_dirty = true;
 }
 
 bool primitive_contains_point(const Primitive* p, Point pt) {
@@ -399,19 +460,29 @@ bool primitive_contains_point(const Primitive* p, Point pt) {
                                         p->geom.circle.radius, pt);
 
     case PRIM_RECTANGLE:
-      /* TODO: Does rectangle contain point?
-       */
-      return false;
+      return math_rect_contains_point(p->geom.rectangle.top_left,
+                                      p->geom.rectangle.width,
+                                      p->geom.rectangle.height, pt);
 
     case PRIM_SEGMENT:
-      /* TODO: Does segment contain point?
-       */
-      return false;
+      return math_segment_contains_point(p->geom.segment.p1,
+                                         p->geom.segment.p2,
+                                         TOLERANCIA_SEGMENTO, pt);
 
     case PRIM_POLYGON:
-      /* TODO: Does polygon contain point?
-       */
-      return false;
+      if (p->geom.polygon.num_vertices < 3) {
+        return false;
+      }
+      // Inclui a fronteira, que o ray-casting pode excluir.
+      for (size_t i = 0, j = p->geom.polygon.num_vertices - 1;
+           i < p->geom.polygon.num_vertices; j = i++) {
+        if (math_segment_contains_point(p->geom.polygon.vertices[j],
+                                        p->geom.polygon.vertices[i], 0.0, pt)) {
+          return true;
+        }
+      }
+      return math_polygon_contains_point(p->geom.polygon.vertices,
+                                         p->geom.polygon.num_vertices, pt);
   }
 
   return false;
