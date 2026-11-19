@@ -23,7 +23,7 @@
 #include "primitive_internal.h"
 
 // A AABB inclui a tolerancia usada no teste de pertenca ao segmento.
-#define TOLERANCIA_SEGMENTO 1.0
+#define TOLERANCIA_SEGMENTO 2.0
 
 // ============================================================================
 // HELPER GEOMETRIC MATH FUNCTIONS (PROVIDED)
@@ -308,7 +308,7 @@ bool polygon_add_vertex(Primitive* p, Point pt) {
 }
 
 bool polygon_remove_vertex(Primitive* p, size_t index) {
-  if (p == NULL || index < 0 || index >= p->geom.polygon.num_vertices || p->type != PRIM_POLYGON) {
+  if (p == NULL || index >= p->geom.polygon.num_vertices || p->type != PRIM_POLYGON) {
     return false;
   }
   for (size_t i = index; i+1 < p->geom.polygon.num_vertices; i++) {

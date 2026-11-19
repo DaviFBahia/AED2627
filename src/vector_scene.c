@@ -293,21 +293,15 @@ static void insertion_sort_by_z(Primitive** arr, size_t count,
     Primitive* chave = arr[i];
     size_t j = i;
 
-    while(j < 0) {
-      
+    while(j > 0) {
+      stats->comparisons++;
+      if (arr[j-1]->z_index <= chave->z_index) break;
+      arr[j] = arr[j-1];
+      stats->swaps++;
+      j--;
     }
+    arr[j] = chave;
   }
-  // TODO: Implement Insertion Sort by z_index
-  // - Handle edge cases (count < 2).
-  // - Iterate through elements from index 1 to count - 1.
-  // - Compare arr[j]->z_index with key->z_index.
-  // - Increment stats->comparisons for every z_index comparison made.
-  // - Shift elements right and increment stats->swaps for every move.
-  // - Insert key in its correct sorted position.
-
-  (void)arr;
-  (void)count;
-  (void)stats;
 }
 
 /**
@@ -325,19 +319,35 @@ static void insertion_sort_by_z(Primitive** arr, size_t count,
  * @param stats Pointer to SortStats structure to track metrics (can be NULL).
  */
 static void merge_by_z(Primitive** arr, Primitive** temp_arr, size_t left,
-                       size_t mid, size_t right, SortStats* stats) {
-  // TODO: Implement Merge step for MergeSort
-  // - Merge sorted halves [left..mid] and [mid+1..right] into temp_arr.
-  // - Compare z_index of primitives and increment stats->comparisons.
-  // - Increment stats->swaps when copying elements to temp_arr and back to arr.
-  // - Copy merged elements back from temp_arr to arr[left..right].
+                        size_t mid, size_t right, SortStats* stats) {
 
-  (void)arr;
-  (void)temp_arr;
-  (void)left;
-  (void)mid;
-  (void)right;
-  (void)stats;
+  size_t i = left;
+  size_t j = mid +1;
+  size_t k = left;
+
+  while(i <= mid && j <= right) {
+    if (stats) stats->comparisons++; // - Compare z_index of primitives and increment stats->comparisons.
+    if (arr[i]->z_index <= arr[j]->z_index) {
+      temp_arr[k++] = arr[i++];
+    } else {
+      temp_arr[k++] = arr[j++];
+    }
+    if (stats) stats->swaps++;  // - Increment stats->swaps when copying elements to temp_arr and back to arr.
+  }
+
+  while ( i<= mid) {
+    temp_arr[k++] = arr[i++];
+    if(stats) stats->swaps++;
+  }
+  while (j<= right) {
+    temp_arr[k++] = arr[j++];
+    if (stats) stats->swaps++;
+  }
+  
+  for (k = left; k <= right; k++) { // - Copy merged elements back from temp_arr to arr[left..right].
+    arr[k] = temp_arr[k];
+    if(stats) stats->swaps++;
+  }
 }
 
 /**
@@ -354,50 +364,73 @@ static void merge_by_z(Primitive** arr, Primitive** temp_arr, size_t left,
  */
 static void merge_sort_by_z(Primitive** arr, Primitive** temp_arr, size_t left,
                             size_t right, SortStats* stats) {
-  // TODO: Implement recursive MergeSort
-  // - Base case: if left >= right, return.
-  // - Calculate mid = left + (right - left) / 2.
-  // - Recursively call merge_sort_by_z for [left..mid] and [mid+1..right].
-  // - Call merge_by_z to merge the two sorted halves.
-
-  (void)arr;
-  (void)temp_arr;
-  (void)left;
-  (void)right;
-  (void)stats;
+  if (left >= right) return; // - Base case: if left >= right, return.
+  size_t mid = left + (right - left) / 2; // - Calculate mid = left + (right - left) / 2.
+  merge_sort_by_z(arr, temp_arr, left, mid, stats);
+  merge_sort_by_z(arr, temp_arr, mid +1, right, stats);
+  merge_by_z(arr, temp_arr, left, mid, right, stats);  // - Call merge_by_z to merge the two sorted halves.
 }
 
 void vector_scene_sort_by_z(VectorScene* scene, bool use_fast_sort,
                             SortStats* stats) {
+
+  if(stats != NULL) { // Reset stats (comparisons = 0, swaps = 0).
+    stats->comparisons = 0;
+    stats->swaps = 0;
+  }
+
+
   if (scene == NULL || scene->count < 2) return;
-
-  /* TODO: Student Implementation & Benchmark Study
-   * Reset stats (comparisons = 0, swaps = 0).
-   * If use_fast_sort is false: execute O(N^2) sort (Insertion Sort).
-   * If use_fast_sort is true: execute O(N log N) sort (MergeSort).
-   * Increment stats->comparisons and stats->swaps on every check/swap!
-   */
-
-  (void)use_fast_sort;
-  (void)stats;
+  
+  if (use_fast_sort) { // If use_fast_sort is true: execute O(N log N) sort (MergeSort).
+    Primitive** temp = malloc(scene->count * sizeof(Primitive*));
+    if(temp != NULL) {
+      merge_sort_by_z(scene->primitives, temp, 0, scene->count -1, stats);
+      free(temp);
+      return;
+    }
+  }   // If use_fast_sort is false: execute O(N^2) sort (Insertion Sort).
+  insertion_sort_by_z(scene->primitives, scene->count, stats);
 }
 
 Primitive* vector_scene_pick_top_primitive(const VectorScene* scene, Point pt,
-                                           bool is_opt, PickStats* stats) {
+                                            bool is_opt, PickStats* stats) {
+  if (stats != NULL) {
+    stats->aabb_tests = 0;
+    stats->exact_tests = 0;
+  }
   if (!scene) {
     return NULL;
   }
 
-  /* TODO: Student Implementation & Benchmark Study
-   * Reset stats (aabb_tests = 0, exact_tests = 0).
-   * Iterate primitives backward from top layer (highest z_index) to lowest.
-   * Phase 1 (Broad-phase): AABB check (increment stats->aabb_tests++).
-   * Phase 2 (Narrow-phase): Exact check primitive_contains_point
-   * (increment stats->exact_tests++). Return topmost matching primitive.
-   */
-  (void)pt;
-  (void)stats;
-  return NULL;
+  Primitive* topo = NULL; //a cena mais acima (z_index maior) encontrada até agora
+
+  //percorre de trás para frente, em caso de z_index iguais,
+  //a que está mais a direita no array foi pintada depois, logo está por cima
+  for(size_t i = scene->count; i >0; i--) {
+    Primitive* p = scene->primitives[i-1];
+    //se ja existe uma forma com camada maior ou igual, está por baixo
+    if (topo != NULL && p->z_index <= topo->z_index) {
+      continue;
+    }
+
+    if (is_opt) { //  Phase 1 (Broad-phase): AABB check (increment stats->aabb_tests++).
+      if (stats) stats->aabb_tests++;
+      BoundingBox caixa = primitive_get_aabb(p);
+      if (pt.x < caixa.min.x || pt.x > caixa.max.x
+        || pt.y < caixa.min.y || pt.y > caixa.max.y) {  // verificar se o ponto está na caixa
+        continue;
+      }
+    }
+
+    // Phase 2 (Narrow-phase): Exact check primitive_contains_point
+    if (stats) stats->exact_tests++;
+    if(primitive_contains_point(p, pt)) {
+      topo = p;
+    }
+  }
+
+  return topo;
 }
 
 // ============================================================================
@@ -405,25 +438,60 @@ Primitive* vector_scene_pick_top_primitive(const VectorScene* scene, Point pt,
 // ============================================================================
 
 bool vector_scene_render(const VectorScene* scene,
-                         const char* output_filename) {
+                          const char* output_filename) {
   if (!scene || !output_filename) {
     return false;
   }
 
-  /* TODO: Student Implementation & Benchmark Study
-   * 1. Allocate pixel buffer (width * height * 3) and fill bg_color.
-   * 2. Sort primitives by ascending z_index (Painter's Algorithm).
-   * 3. For each primitive:
-   *    a) Update AABB.
-   *    b) Clip pixel bounds [xMin..xMax] x [yMin..yMax] against
-   *       [0..widht-1] x [0..height-1]
-   *    c) For each pixel in the clipped domain
-   *    d) Test primitive_contains_point(p, pixel_center).
-   *    e) Perform Alpha Blending compositing.
-   * 4. Call save_ppm_image(output_filename, width, height, pixel_buffer).
-   * 5. Free buffers and return true.
-   */
-  return false;
+  int w = scene->width, h = scene->height;
+
+  uint8_t* pixels = malloc((size_t)w * h * 3);
+  if ( pixels == NULL) return false;
+  for (size_t i = 0; i <(size_t) w* h; i++) {
+    pixels[3 * i + 0] = scene->bg_color.r;
+    pixels[3 * i + 1] = scene->bg_color.g;
+    pixels[3 * i + 2] = scene->bg_color.b;
+  }
+
+  size_t n = scene->count;
+  Primitive** ordem = malloc((n > 0 ? n : 1) * sizeof(Primitive*));
+  Primitive** temp = malloc((n>0 ? n : 1) * sizeof(Primitive*));
+  if (ordem == NULL || temp == NULL) {
+    free(ordem); free(temp); free(pixels);
+    return false;
+  }
+  memcpy(ordem, scene->primitives, n * sizeof(Primitive*));
+  if (n > 1) merge_sort_by_z(ordem, temp, 0, n -1, NULL);
+  free(temp);
+
+  // pintar formas da camada mais baixa para a mais alta
+  for (size_t k = 0; k < n; k++) {
+    Primitive* p = ordem[k];
+    BoundingBox caixa = primitive_get_aabb(p);
+
+    int x0 = (int)fmax(0, floor(caixa.min.x));
+    int y0 = (int)fmax(0, floor(caixa.min.y));
+    int x1 = (int)fmin(w - 1, ceil(caixa.max.x));
+    int y1 = (int)fmin(h - 1, ceil(caixa.max.y));
+
+    for (int y = y0; y <= y1; y++) {
+      for (int x = x0; x <= x1; x++) {
+        Point centro = {x + 0.5, y + 0.5};
+        if(!primitive_contains_point(p, centro)) continue;
+
+        uint8_t* px = &pixels[3 * ((size_t)y * w +x)];
+
+        px[0] = (uint8_t)(p->alpha * p->color.r + (1.0 - p->alpha) * px[0]);
+        px[1] = (uint8_t)(p->alpha * p->color.g + (1.0 - p->alpha) * px[1]);
+        px[2] = (uint8_t)(p->alpha * p->color.b + (1.0 - p->alpha) * px[2]);
+      }
+    }
+  }
+  free(ordem);
+
+  bool ok = save_ppm_image(output_filename, w, h, pixels);
+  free(pixels);
+  return ok;
 }
 
 // ============================================================================
