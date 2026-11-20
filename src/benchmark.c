@@ -53,12 +53,12 @@ VectorScene* criar_cena(int n, int tipo_z) {
 }
 
 void testar_ordenacao(void) {
-  int tamanhos[] = {100, 1000, 10000, 100000};
+  int tamanhos[] = {100, 300, 1000, 3000, 10000, 30000, 100000};
   const char* nome_tipo[] = {"aleatorio", "ordenado", "invertido"};
 
   printf("N;cenario;algoritmo;tempo_s;comparacoes;trocas\n");
 
-  for (int t = 0; t < 4; t++) {
+  for (size_t t = 0; t < sizeof(tamanhos) / sizeof(tamanhos[0]); t++) {
     for (int tipo = 0; tipo < 3; tipo++) {
       for (int merge = 0; merge <= 1; merge++) {
         // com N pequeno, uma ordenação demora menos do que o relógio
@@ -97,12 +97,12 @@ void testar_ordenacao(void) {
 }
 
 void testar_picking(void) {
-  int tamanhos[] = {100, 1000, 10000, 100000};
+  int tamanhos[] = {100, 300, 1000, 3000, 10000, 30000, 100000};
   int cliques = 10000;  // quantos pontos aleatórios testamos em cada cena
 
   printf("N;estrategia;tempo_s;testes_aabb;testes_exatos;acertos\n");
 
-  for (int t = 0; t < 4; t++) {
+  for (size_t t = 0; t < sizeof(tamanhos) / sizeof(tamanhos[0]); t++) {
     VectorScene* cena = criar_cena(tamanhos[t], 0);
     vector_scene_sort_by_z(cena, true,
                            NULL);  // ordenamos uma vez antes dos cliques
