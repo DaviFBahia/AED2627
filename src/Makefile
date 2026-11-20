@@ -26,7 +26,12 @@ BENCH_SRC = benchmark.c primitive.c vector_scene.c
 BENCH_OBJ = $(BENCH_SRC:.c=.o)
 BENCH_TARGET = benchmark
 
-all: $(TEST_TARGET) $(DEMO_TARGET) $(BENCH_TARGET) $(MEUS_TARGET)
+# Gerar uma imagem a partir de um ficheiro .vsc
+RENDER_SRC = renderizar.c primitive.c vector_scene.c
+RENDER_OBJ = $(RENDER_SRC:.c=.o)
+RENDER_TARGET = renderizar
+
+all: $(TEST_TARGET) $(DEMO_TARGET) $(BENCH_TARGET) $(MEUS_TARGET) $(RENDER_TARGET)
 
 $(TEST_TARGET): $(TEST_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
@@ -38,6 +43,9 @@ $(BENCH_TARGET): $(BENCH_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(MEUS_TARGET): $(MEUS_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(RENDER_TARGET): $(RENDER_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 %.o: %.c primitive.h primitive_internal.h vector_scene.h
@@ -72,6 +80,6 @@ memcheck: $(TEST_TARGET) $(MEUS_TARGET)
 	valgrind --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all --error-exitcode=99 ./$(MEUS_TARGET)
 
 clean:
-	rm -f *.o $(TEST_TARGET) $(DEMO_TARGET) $(BENCH_TARGET) $(MEUS_TARGET)
+	rm -f *.o $(TEST_TARGET) $(DEMO_TARGET) $(BENCH_TARGET) $(MEUS_TARGET) $(RENDER_TARGET)
 
 .PHONY: all test test-fase1 test-fase2 test-fase3 test-fase4 test-fase5 meus-testes demo memcheck clean
