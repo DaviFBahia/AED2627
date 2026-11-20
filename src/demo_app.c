@@ -221,10 +221,10 @@ int main(void) {
     printf("Updated house body (ID 9) z-index to 8.\n");
   }
 
-  // Sort by Z-Index using fast sort (QuickSort)
+  // Sort by Z-Index using fast sort (Merge Sort)
   SortStats sort_stats = {0, 0};
   vector_scene_sort_by_z(loaded_scene, true, &sort_stats);
-  printf("Sorted primitives by Z-Index (QuickSort):\n");
+  printf("Sorted primitives by Z-Index (Merge Sort):\n");
   printf("  -> Comparisons: %lu | Swaps/Moves: %lu\n", sort_stats.comparisons,
          sort_stats.swaps);
 

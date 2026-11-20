@@ -1,16 +1,16 @@
 /**
  * @file primitive.c
- * @brief Implementation skeleton of the Primitive ADT (2D Vector Objects)
+ * @brief Implementacao do TAD Primitive (primitivas 2D)
  *
  * Algoritmos e Estruturas de Dados 2026/2027
  * Departamento de Electrónica, Telecomunicações e Informática - UA
  */
 
 /**
- * STUDENT NAME:
- * STUDENT NUMBER:
- * STUDENT NAME:
- * STUDENT NUMBER:
+ * STUDENT NAME: Davi Ferreira Navarro Bahia
+ * STUDENT NUMBER: 132261
+ * STUDENT NAME: Sofia Gouveia de Pires Marques
+ * STUDENT NUMBER: 132405
  */
 
 #include "primitive.h"
@@ -174,7 +174,7 @@ size_t polygon_get_num_vertices(const Primitive* p) {
 }
 
 // ============================================================================
-// CREATION AND DESTRUCTION FUNCTIONS (STUDENTS MUST COMPLETE)
+// CREATION AND DESTRUCTION FUNCTIONS
 // ============================================================================
 
 /**
@@ -274,7 +274,7 @@ void primitive_destroy(Primitive* p) {
 }
 
 // ============================================================================
-// DYNAMIC ARRAY MANIPULATION (POLYGON) (STUDENTS MUST COMPLETE)
+// DYNAMIC ARRAY MANIPULATION (POLYGON)
 // ============================================================================
 
 bool polygon_add_vertex(Primitive* p, Point pt) {
@@ -328,7 +328,7 @@ bool polygon_remove_vertex(Primitive* p, size_t index) {
 }
 
 // ============================================================================
-// GEOMETRIC OPERATIONS AND TRANSFORMATIONS (STUDENTS MUST COMPLETE)
+// GEOMETRIC OPERATIONS AND TRANSFORMATIONS
 // ============================================================================
 
 void primitive_update_aabb(Primitive* p) {

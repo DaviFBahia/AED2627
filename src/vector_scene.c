@@ -1,16 +1,16 @@
 /**
  * @file vector_scene.c
- * @brief Implementation skeleton of the VectorScene ADT (2D Vector Scene)
+ * @brief Implementacao do TAD VectorScene (cenas 2D)
  *
  * Algoritmos e Estruturas de Dados 2026/2027
  * Departamento de Electrónica, Telecomunicações e Informática - UA
  */
 
 /**
- * STUDENT NAME:
- * STUDENT NUMBER:
- * STUDENT NAME:
- * STUDENT NUMBER:
+ * STUDENT NAME: Davi Ferreira Navarro Bahia
+ * STUDENT NUMBER: 132261
+ * STUDENT NAME: Sofia Gouveia de Pires Marques
+ * STUDENT NUMBER: 132405
  */
 
 #include "vector_scene.h"
@@ -128,7 +128,7 @@ Primitive* vector_scene_get_primitive_by_id(const VectorScene* scene, int id) {
 }
 
 // ============================================================================
-// SCENE LIFECYCLE (STUDENTS MUST COMPLETE)
+// SCENE LIFECYCLE
 // ============================================================================
 
 VectorScene* vector_scene_create(int width, int height, Color bg_color) {
@@ -168,7 +168,7 @@ void vector_scene_destroy(VectorScene* scene) {
 }
 
 // ============================================================================
-// COLLECTION MANAGEMENT (STUDENTS MUST COMPLETE)
+// COLLECTION MANAGEMENT
 // ============================================================================
 
 int vector_scene_add_primitive(VectorScene* scene, Primitive* p) {
@@ -242,7 +242,7 @@ bool vector_scene_remove_primitive(VectorScene* scene, int id) {
 }
 
 // ============================================================================
-// MANIPULATION AND TRANSFORMATIONS (STUDENTS MUST COMPLETE)
+// MANIPULATION AND TRANSFORMATIONS
 // ============================================================================
 
 bool vector_scene_translate_primitive(VectorScene* scene, int id, double dx,
@@ -273,7 +273,7 @@ bool vector_scene_set_z_index(VectorScene* scene, int id, int new_z_index) {
 }
 
 // ============================================================================
-// SPATIAL SELECTION AND SORTING (STUDENTS MUST COMPLETE & ANALYZE)
+// SPATIAL SELECTION AND SORTING
 // ============================================================================
 
 /**
@@ -289,7 +289,6 @@ bool vector_scene_set_z_index(VectorScene* scene, int id, int new_z_index) {
  */
 static void insertion_sort_by_z(Primitive** arr, size_t count,
                                 SortStats* stats) {
-  // Com menos de 2 elementos ja esta ordenado
   if (count < 2) {
     return;
   }
@@ -298,9 +297,7 @@ static void insertion_sort_by_z(Primitive** arr, size_t count,
     Primitive* chave = arr[i];
     size_t j = i;
 
-    // Desloca para a direita os elementos maiores que a chave.
-    // j e size_t, por isso o ciclo para em j > 0 (j >= 0 era sempre verdade).
-    // Parar com <= mantem a ordenacao estavel.
+    // Nao desloca elementos iguais: preserva a estabilidade.
     while (j > 0) {
       stats->comparisons++;
       if (arr[j - 1]->z_index <= chave->z_index) {
@@ -334,7 +331,7 @@ static void merge_by_z(Primitive** arr, Primitive** temp_arr, size_t left,
   size_t j = mid + 1;  // posicao na metade direita
   size_t k = left;     // posicao no array auxiliar
 
-  // Cada copia para o array auxiliar conta como uma troca
+  // swaps conta copias de ponteiros, nao apenas trocas.
   while (i <= mid && j <= right) {
     if (stats) stats->comparisons++;
     // <= tira da esquerda em caso de empate (ordenacao estavel)
@@ -377,7 +374,6 @@ static void merge_by_z(Primitive** arr, Primitive** temp_arr, size_t left,
  */
 static void merge_sort_by_z(Primitive** arr, Primitive** temp_arr, size_t left,
                             size_t right, SortStats* stats) {
-  // Caso base: 0 ou 1 elemento ja esta ordenado
   if (left >= right) {
     return;
   }
@@ -463,7 +459,7 @@ Primitive* vector_scene_pick_top_primitive(const VectorScene* scene, Point pt,
 }
 
 // ============================================================================
-// RENDERING / RASTERIZATION (STUDENTS MUST COMPLETE)
+// RENDERING / RASTERIZATION
 // ============================================================================
 
 // Auxiliar: pinta uma forma no buffer de pixeis, so dentro da sua AABB
