@@ -148,7 +148,7 @@ VectorScene* vector_scene_create(int width, int height, Color bg_color) {
   scene->bg_color = bg_color;
   scene->count = 0;
   scene->capacity = INITIAL_SCENE_CAPACITY;
-  scene->next_auto_id = 0;
+  scene->next_auto_id = 1;  // os ids automaticos comecam em 1
   return scene;
 }
 
@@ -174,14 +174,21 @@ int vector_scene_add_primitive(VectorScene* scene, Primitive* p) {
   }
 
   int id = p->id;
-  if (id >= 0) {
-    if (vector_scene_get_primitive_by_id(scene, id) != NULL) {
-      return -1;
-    }
-  } else {
+  if (id < 0) {
     id = scene->next_auto_id;
-    if (id < 0 || (id == INT_MAX &&
-                  vector_scene_get_primitive_by_id(scene, id) != NULL)) {
+    if (id < 0) {
+      // Depois de INT_MAX, procura um ID livre sem overflow.
+      id = 1;
+      while (vector_scene_get_primitive_by_id(scene, id) != NULL) {
+        if (id == INT_MAX) {
+          return -1;
+        }
+        id++;
+      }
+    }
+  } else if (scene->next_auto_id < 0 || id < scene->next_auto_id) {
+    // IDs acima do maior usado sao novos: a carga sequencial fica O(N).
+    if (vector_scene_get_primitive_by_id(scene, id) != NULL) {
       return -1;
     }
   }
@@ -200,21 +207,16 @@ int vector_scene_add_primitive(VectorScene* scene, Primitive* p) {
     scene->capacity = nova_capacidade;
   }
 
-  // A cena so recebe a posse depois de garantir espaco no array.
+  // So transfere a posse e altera o ID depois de garantir capacidade.
   p->id = id;
+  if (scene->next_auto_id >= 0 && id >= scene->next_auto_id) {
+    scene->next_auto_id = id == INT_MAX ? -1 : id + 1;
+  }
+
   scene->primitives[scene->count] = p;
   scene->count++;
-  if (scene->next_auto_id >= 0 && id >= scene->next_auto_id) {
-    if (id < INT_MAX) {
-      scene->next_auto_id = id + 1;
-    } else if (scene->next_auto_id == INT_MAX) {
-      // Evita overflow; -1 indica que os IDs automaticos se esgotaram.
-      scene->next_auto_id = -1;
-    }
-    // Um INT_MAX explicito nao impede usar IDs automaticos inferiores.
-  }
   primitive_update_aabb(p);
-  return id;
+  return p->id;
 }
 
 bool vector_scene_remove_primitive(VectorScene* scene, int id) {
@@ -284,19 +286,24 @@ bool vector_scene_set_z_index(VectorScene* scene, int id, int new_z_index) {
  */
 static void insertion_sort_by_z(Primitive** arr, size_t count,
                                 SortStats* stats) {
-
-  if ( count < 2) {
-    return; // se for menos de 2 elementos, ja está ordenado
+  // Com menos de 2 elementos ja esta ordenado
+  if (count < 2) {
+    return;
   }
 
-  for (size_t i = 1; i <count; i++) {
+  for (size_t i = 1; i < count; i++) {
     Primitive* chave = arr[i];
     size_t j = i;
 
-    while(j > 0) {
+    // Desloca para a direita os elementos maiores que a chave.
+    // j e size_t, por isso o ciclo para em j > 0 (j >= 0 era sempre verdade).
+    // Parar com <= mantem a ordenacao estavel.
+    while (j > 0) {
       stats->comparisons++;
-      if (arr[j-1]->z_index <= chave->z_index) break;
-      arr[j] = arr[j-1];
+      if (arr[j - 1]->z_index <= chave->z_index) {
+        break;
+      }
+      arr[j] = arr[j - 1];
       stats->swaps++;
       j--;
     }
@@ -319,34 +326,37 @@ static void insertion_sort_by_z(Primitive** arr, size_t count,
  * @param stats Pointer to SortStats structure to track metrics (can be NULL).
  */
 static void merge_by_z(Primitive** arr, Primitive** temp_arr, size_t left,
-                        size_t mid, size_t right, SortStats* stats) {
+                       size_t mid, size_t right, SortStats* stats) {
+  size_t i = left;     // posicao na metade esquerda
+  size_t j = mid + 1;  // posicao na metade direita
+  size_t k = left;     // posicao no array auxiliar
 
-  size_t i = left;
-  size_t j = mid +1;
-  size_t k = left;
-
-  while(i <= mid && j <= right) {
-    if (stats) stats->comparisons++; // - Compare z_index of primitives and increment stats->comparisons.
+  // Cada copia para o array auxiliar conta como uma troca
+  while (i <= mid && j <= right) {
+    if (stats) stats->comparisons++;
+    // <= tira da esquerda em caso de empate (ordenacao estavel)
     if (arr[i]->z_index <= arr[j]->z_index) {
       temp_arr[k++] = arr[i++];
     } else {
       temp_arr[k++] = arr[j++];
     }
-    if (stats) stats->swaps++;  // - Increment stats->swaps when copying elements to temp_arr and back to arr.
+    if (stats) stats->swaps++;
   }
 
-  while ( i<= mid) {
+  // Copia o que sobrou de uma das metades
+  while (i <= mid) {
     temp_arr[k++] = arr[i++];
-    if(stats) stats->swaps++;
+    if (stats) stats->swaps++;
   }
-  while (j<= right) {
+  while (j <= right) {
     temp_arr[k++] = arr[j++];
     if (stats) stats->swaps++;
   }
-  
-  for (k = left; k <= right; k++) { // - Copy merged elements back from temp_arr to arr[left..right].
+
+  // Volta a copiar o resultado para o array original (tambem conta)
+  for (k = left; k <= right; k++) {
     arr[k] = temp_arr[k];
-    if(stats) stats->swaps++;
+    if (stats) stats->swaps++;
   }
 }
 
@@ -364,37 +374,51 @@ static void merge_by_z(Primitive** arr, Primitive** temp_arr, size_t left,
  */
 static void merge_sort_by_z(Primitive** arr, Primitive** temp_arr, size_t left,
                             size_t right, SortStats* stats) {
-  if (left >= right) return; // - Base case: if left >= right, return.
-  size_t mid = left + (right - left) / 2; // - Calculate mid = left + (right - left) / 2.
+  // Caso base: 0 ou 1 elemento ja esta ordenado
+  if (left >= right) {
+    return;
+  }
+
+  size_t mid = left + (right - left) / 2;
   merge_sort_by_z(arr, temp_arr, left, mid, stats);
-  merge_sort_by_z(arr, temp_arr, mid +1, right, stats);
-  merge_by_z(arr, temp_arr, left, mid, right, stats);  // - Call merge_by_z to merge the two sorted halves.
+  merge_sort_by_z(arr, temp_arr, mid + 1, right, stats);
+  merge_by_z(arr, temp_arr, left, mid, right, stats);
 }
 
 void vector_scene_sort_by_z(VectorScene* scene, bool use_fast_sort,
                             SortStats* stats) {
+  // Se o utilizador nao quiser as estatisticas, contamos numa variavel local
+  SortStats estatisticas_locais = {0, 0};
+  if (stats == NULL) {
+    stats = &estatisticas_locais;
+  }
+  stats->comparisons = 0;
+  stats->swaps = 0;
 
-  if(stats != NULL) { // Reset stats (comparisons = 0, swaps = 0).
-    stats->comparisons = 0;
-    stats->swaps = 0;
+  if (scene == NULL || scene->count < 2) {
+    return;
   }
 
-
-  if (scene == NULL || scene->count < 2) return;
-  
-  if (use_fast_sort) { // If use_fast_sort is true: execute O(N log N) sort (MergeSort).
+  if (use_fast_sort) {
     Primitive** temp = malloc(scene->count * sizeof(Primitive*));
-    if(temp != NULL) {
-      merge_sort_by_z(scene->primitives, temp, 0, scene->count -1, stats);
+    if (temp != NULL) {
+      merge_sort_by_z(scene->primitives, temp, 0, scene->count - 1, stats);
       free(temp);
       return;
     }
-  }   // If use_fast_sort is false: execute O(N^2) sort (Insertion Sort).
+    // Sem memoria para o array auxiliar: usa o insertion sort, que e in-place
+  }
   insertion_sort_by_z(scene->primitives, scene->count, stats);
 }
 
+// Auxiliar: o ponto esta dentro da caixa delimitadora (fronteira incluida)?
+static bool is_point_in_aabb(BoundingBox caixa, Point pt) {
+  return pt.x >= caixa.min.x && pt.x <= caixa.max.x && pt.y >= caixa.min.y &&
+         pt.y <= caixa.max.y;
+}
+
 Primitive* vector_scene_pick_top_primitive(const VectorScene* scene, Point pt,
-                                            bool is_opt, PickStats* stats) {
+                                           bool is_opt, PickStats* stats) {
   if (stats != NULL) {
     stats->aabb_tests = 0;
     stats->exact_tests = 0;
@@ -403,29 +427,31 @@ Primitive* vector_scene_pick_top_primitive(const VectorScene* scene, Point pt,
     return NULL;
   }
 
-  Primitive* topo = NULL; //a cena mais acima (z_index maior) encontrada até agora
+  // A forma mais acima encontrada ate agora (a de maior z_index)
+  Primitive* topo = NULL;
 
-  //percorre de trás para frente, em caso de z_index iguais,
-  //a que está mais a direita no array foi pintada depois, logo está por cima
-  for(size_t i = scene->count; i >0; i--) {
-    Primitive* p = scene->primitives[i-1];
-    //se ja existe uma forma com camada maior ou igual, está por baixo
+  // Percorre de tras para a frente. Com z_index iguais, a que esta mais a
+  // direita no array foi pintada depois, logo esta por cima.
+  for (size_t i = scene->count; i > 0; i--) {
+    Primitive* p = scene->primitives[i - 1];
+
+    // Se ja temos uma forma com z_index maior ou igual, esta fica por baixo
+    // e nem vale a pena testa-la
     if (topo != NULL && p->z_index <= topo->z_index) {
       continue;
     }
 
-    if (is_opt) { //  Phase 1 (Broad-phase): AABB check (increment stats->aabb_tests++).
+    // 1.a fase: teste barato a AABB (so na estrategia otimizada)
+    if (is_opt) {
       if (stats) stats->aabb_tests++;
-      BoundingBox caixa = primitive_get_aabb(p);
-      if (pt.x < caixa.min.x || pt.x > caixa.max.x
-        || pt.y < caixa.min.y || pt.y > caixa.max.y) {  // verificar se o ponto está na caixa
+      if (!is_point_in_aabb(primitive_get_aabb(p), pt)) {
         continue;
       }
     }
 
-    // Phase 2 (Narrow-phase): Exact check primitive_contains_point
+    // 2.a fase: teste exato
     if (stats) stats->exact_tests++;
-    if(primitive_contains_point(p, pt)) {
+    if (primitive_contains_point(p, pt)) {
       topo = p;
     }
   }
@@ -437,55 +463,72 @@ Primitive* vector_scene_pick_top_primitive(const VectorScene* scene, Point pt,
 // RENDERING / RASTERIZATION (STUDENTS MUST COMPLETE)
 // ============================================================================
 
+// Auxiliar: pinta uma forma no buffer de pixeis, so dentro da sua AABB
+// (cortada ao tamanho da imagem), fazendo alpha blending em cada pixel.
+static void draw_primitive(uint8_t* pixels, int w, int h, Primitive* p) {
+  BoundingBox caixa = primitive_get_aabb(p);
+
+  int x0 = (int)fmax(0, floor(caixa.min.x));
+  int y0 = (int)fmax(0, floor(caixa.min.y));
+  int x1 = (int)fmin(w - 1, ceil(caixa.max.x));
+  int y1 = (int)fmin(h - 1, ceil(caixa.max.y));
+
+  for (int y = y0; y <= y1; y++) {
+    for (int x = x0; x <= x1; x++) {
+      // Testa o centro do pixel
+      Point centro = {x + 0.5, y + 0.5};
+      if (!primitive_contains_point(p, centro)) {
+        continue;
+      }
+
+      // cor_final = alpha * cor_nova + (1 - alpha) * cor_fundo
+      uint8_t* px = &pixels[3 * ((size_t)y * w + x)];
+      px[0] = (uint8_t)(p->alpha * p->color.r + (1.0 - p->alpha) * px[0]);
+      px[1] = (uint8_t)(p->alpha * p->color.g + (1.0 - p->alpha) * px[1]);
+      px[2] = (uint8_t)(p->alpha * p->color.b + (1.0 - p->alpha) * px[2]);
+    }
+  }
+}
+
 bool vector_scene_render(const VectorScene* scene,
-                          const char* output_filename) {
+                         const char* output_filename) {
   if (!scene || !output_filename) {
     return false;
   }
 
-  int w = scene->width, h = scene->height;
+  int w = scene->width;
+  int h = scene->height;
 
   uint8_t* pixels = malloc((size_t)w * h * 3);
-  if ( pixels == NULL) return false;
-  for (size_t i = 0; i <(size_t) w* h; i++) {
+  if (pixels == NULL) {
+    return false;
+  }
+  for (size_t i = 0; i < (size_t)w * h; i++) {
     pixels[3 * i + 0] = scene->bg_color.r;
     pixels[3 * i + 1] = scene->bg_color.g;
     pixels[3 * i + 2] = scene->bg_color.b;
   }
 
+  // A cena e const, por isso ordenamos uma copia do array de ponteiros.
+  // O malloc e de pelo menos 1 elemento porque malloc(0) pode devolver NULL.
   size_t n = scene->count;
   Primitive** ordem = malloc((n > 0 ? n : 1) * sizeof(Primitive*));
-  Primitive** temp = malloc((n>0 ? n : 1) * sizeof(Primitive*));
+  Primitive** temp = malloc((n > 0 ? n : 1) * sizeof(Primitive*));
   if (ordem == NULL || temp == NULL) {
-    free(ordem); free(temp); free(pixels);
+    free(ordem);
+    free(temp);
+    free(pixels);
     return false;
   }
   memcpy(ordem, scene->primitives, n * sizeof(Primitive*));
-  if (n > 1) merge_sort_by_z(ordem, temp, 0, n -1, NULL);
+  if (n > 1) {
+    merge_sort_by_z(ordem, temp, 0, n - 1, NULL);
+  }
   free(temp);
 
-  // pintar formas da camada mais baixa para a mais alta
+  // Pinta da camada mais baixa para a mais alta (algoritmo do pintor)
   for (size_t k = 0; k < n; k++) {
-    Primitive* p = ordem[k];
-    BoundingBox caixa = primitive_get_aabb(p);
-
-    int x0 = (int)fmax(0, floor(caixa.min.x));
-    int y0 = (int)fmax(0, floor(caixa.min.y));
-    int x1 = (int)fmin(w - 1, ceil(caixa.max.x));
-    int y1 = (int)fmin(h - 1, ceil(caixa.max.y));
-
-    for (int y = y0; y <= y1; y++) {
-      for (int x = x0; x <= x1; x++) {
-        Point centro = {x + 0.5, y + 0.5};
-        if(!primitive_contains_point(p, centro)) continue;
-
-        uint8_t* px = &pixels[3 * ((size_t)y * w +x)];
-
-        px[0] = (uint8_t)(p->alpha * p->color.r + (1.0 - p->alpha) * px[0]);
-        px[1] = (uint8_t)(p->alpha * p->color.g + (1.0 - p->alpha) * px[1]);
-        px[2] = (uint8_t)(p->alpha * p->color.b + (1.0 - p->alpha) * px[2]);
-      }
-    }
+    draw_primitive(pixels, w, h, ordem[k]);
   }
   free(ordem);
 
@@ -585,7 +628,13 @@ VectorScene* vector_scene_load_text(const char* filename) {
       int w, h, r, g, b;
       if (sscanf(line, "SCENE %d %d %d %d %d", &w, &h, &r, &g, &b) == 5) {
         Color bg = {(uint8_t)r, (uint8_t)g, (uint8_t)b};
+        if (scene != NULL) {
+          goto erro_leitura;
+        }
         scene = vector_scene_create(w, h, bg);
+        if (scene == NULL) {
+          goto erro_leitura;
+        }
       }
     } else if (scene != NULL) {
       int id, z_index, r, g, b;
@@ -599,8 +648,12 @@ VectorScene* vector_scene_load_text(const char* filename) {
           Color color = {(uint8_t)r, (uint8_t)g, (uint8_t)b};
           Primitive* p = primitive_create_circle(id, center, radius, color,
                                                  alpha, z_index);
-          if (p) {
-            vector_scene_add_primitive(scene, p);
+          if (p == NULL) {
+            goto erro_leitura;
+          }
+          if (vector_scene_add_primitive(scene, p) < 0) {
+            primitive_destroy(p);
+            goto erro_leitura;
           }
         }
       } else if (strcmp(tag, "RECT") == 0) {
@@ -611,8 +664,12 @@ VectorScene* vector_scene_load_text(const char* filename) {
           Color color = {(uint8_t)r, (uint8_t)g, (uint8_t)b};
           Primitive* p = primitive_create_rectangle(id, top_left, w, h, color,
                                                     alpha, z_index);
-          if (p) {
-            vector_scene_add_primitive(scene, p);
+          if (p == NULL) {
+            goto erro_leitura;
+          }
+          if (vector_scene_add_primitive(scene, p) < 0) {
+            primitive_destroy(p);
+            goto erro_leitura;
           }
         }
       } else if (strcmp(tag, "SEG") == 0) {
@@ -624,8 +681,12 @@ VectorScene* vector_scene_load_text(const char* filename) {
           Color color = {(uint8_t)r, (uint8_t)g, (uint8_t)b};
           Primitive* p =
               primitive_create_segment(id, p1, p2, color, alpha, z_index);
-          if (p) {
-            vector_scene_add_primitive(scene, p);
+          if (p == NULL) {
+            goto erro_leitura;
+          }
+          if (vector_scene_add_primitive(scene, p) < 0) {
+            primitive_destroy(p);
+            goto erro_leitura;
           }
         }
       } else if (strcmp(tag, "POLY") == 0) {
@@ -635,9 +696,14 @@ VectorScene* vector_scene_load_text(const char* filename) {
         if (read_header == 7) {
           Color color = {(uint8_t)r, (uint8_t)g, (uint8_t)b};
           Primitive* p = primitive_create_polygon(id, color, alpha, z_index);
-          if (p) {
+          if (p == NULL) {
+            goto erro_leitura;
+          }
+          {
+            // Salta a etiqueta e os 7 campos do cabecalho (id, z, r, g, b,
+            // alpha, num_verts) para chegar ao primeiro vertice
             char* ptr = line;
-            for (int k = 0; k < 7; k++) {
+            for (int k = 0; k < 8; k++) {
               while (*ptr && *ptr != ' ' && *ptr != '\t') {
                 ptr++;
               }
@@ -650,7 +716,10 @@ VectorScene* vector_scene_load_text(const char* filename) {
               double vx, vy;
               if (sscanf(ptr, "%lf %lf", &vx, &vy) == 2) {
                 Point pt = {vx, vy};
-                polygon_add_vertex(p, pt);
+                if (!polygon_add_vertex(p, pt)) {
+                  primitive_destroy(p);
+                  goto erro_leitura;
+                }
 
                 for (int k = 0; k < 2; k++) {
                   while (*ptr && *ptr != ' ' && *ptr != '\t' && *ptr != '\n' &&
@@ -662,9 +731,15 @@ VectorScene* vector_scene_load_text(const char* filename) {
                     ptr++;
                   }
                 }
+              } else {
+                primitive_destroy(p);
+                goto erro_leitura;
               }
             }
-            vector_scene_add_primitive(scene, p);
+            if (vector_scene_add_primitive(scene, p) < 0) {
+              primitive_destroy(p);
+              goto erro_leitura;
+            }
           }
         }
       }
@@ -673,4 +748,9 @@ VectorScene* vector_scene_load_text(const char* filename) {
 
   fclose(file);
   return scene;
+
+erro_leitura:
+  fclose(file);
+  vector_scene_destroy(scene);
+  return NULL;
 }

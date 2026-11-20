@@ -22,7 +22,8 @@
 
 #include "primitive_internal.h"
 
-// A AABB inclui a tolerancia usada no teste de pertenca ao segmento.
+// Um segmento tem espessura zero, por isso um ponto pertence-lhe se estiver
+// a esta distancia (em pixeis) ou menos.
 #define TOLERANCIA_SEGMENTO 2.0
 
 // ============================================================================
@@ -42,7 +43,7 @@ static bool math_circle_contains_point(Point center, double radius, Point pt) {
  * @brief Tests exact containment of a point inside an axis-aligned rectangle.
  */
 static bool math_rect_contains_point(Point top_left, double width,
-                                      double height, Point pt) {
+                                     double height, Point pt) {
   return (pt.x >= top_left.x && pt.x <= (top_left.x + width) &&
           pt.y >= top_left.y && pt.y <= (top_left.y + height));
 }
@@ -181,7 +182,7 @@ size_t polygon_get_num_vertices(const Primitive* p) {
  * Creates and dynamically allocates a Circle primitive.
  */
 Primitive* primitive_create_circle(int id, Point center, double radius,
-                                    Color color, double alpha, int z_index) {
+                                   Color color, double alpha, int z_index) {
   if (radius <= 0.0 || alpha < 0.0 || alpha > 1.0) {
     return NULL;
   }
@@ -204,12 +205,12 @@ Primitive* primitive_create_circle(int id, Point center, double radius,
 Primitive* primitive_create_rectangle(int id, Point top_left, double width,
                                       double height, Color color, double alpha,
                                       int z_index) {
-
-  if (width <= 0.0 || height <= 0.0 || alpha < 0.0 || alpha > 1.0){
-    return NULL;}
+  if (width <= 0.0 || height <= 0.0 || alpha < 0.0 || alpha > 1.0) {
+    return NULL;
+  }
 
   Primitive* p =
-    primitive_allocate_common(id, PRIM_RECTANGLE, color, alpha, z_index);
+      primitive_allocate_common(id, PRIM_RECTANGLE, color, alpha, z_index);
   if (p == NULL) {
     return NULL;
   }
@@ -221,16 +222,16 @@ Primitive* primitive_create_rectangle(int id, Point top_left, double width,
   primitive_update_aabb(p);
   return p;
 }
-  
+
 Primitive* primitive_create_segment(int id, Point p1, Point p2, Color color,
                                     double alpha, int z_index) {
-  if (alpha > 1.0 || alpha < 0.0) { 
+  if (alpha > 1.0 || alpha < 0.0) {
     return NULL;
   }
 
   Primitive* p =
-    primitive_allocate_common(id, PRIM_SEGMENT, color, alpha, z_index);
-  if (p == NULL) { 
+      primitive_allocate_common(id, PRIM_SEGMENT, color, alpha, z_index);
+  if (p == NULL) {
     return NULL;
   }
 
@@ -247,8 +248,8 @@ Primitive* primitive_create_polygon(int id, Color color, double alpha,
   if (alpha < 0.0 || alpha > 1.0) {
     return NULL;
   }
-  Primitive* p = 
-    primitive_allocate_common(id, PRIM_POLYGON, color, alpha, z_index);
+  Primitive* p =
+      primitive_allocate_common(id, PRIM_POLYGON, color, alpha, z_index);
 
   if (p == NULL) {
     return NULL;
@@ -256,7 +257,7 @@ Primitive* primitive_create_polygon(int id, Color color, double alpha,
   p->geom.polygon.capacity = 0;
   p->geom.polygon.num_vertices = 0;
   p->geom.polygon.vertices = NULL;
-  primitive_update_aabb (p);
+  primitive_update_aabb(p);
   return p;
 }
 
@@ -264,13 +265,12 @@ void primitive_destroy(Primitive* p) {
   if (p == NULL) {
     return;
   }
-  if(p->type == PRIM_POLYGON) {
-    free(p->geom.polygon.vertices); //Desaloca a memoria dos vertices do polygon
+
+  // So o poligono tem memoria propria (o array de vertices)
+  if (p->type == PRIM_POLYGON) {
+    free(p->geom.polygon.vertices);
   }
   free(p);
-    
-  
-
 }
 
 // ============================================================================
@@ -286,13 +286,13 @@ bool polygon_add_vertex(Primitive* p, Point pt) {
     size_t nova_capacidade;
     if (p->geom.polygon.capacity == 0) {
       nova_capacidade = 4;
-    }
-    else {
+    } else {
       nova_capacidade = 2 * p->geom.polygon.capacity;
     }
 
-    Point* novo = realloc(p->geom.polygon.vertices, nova_capacidade*sizeof(Point));
-
+    // Ponteiro temporario: se o realloc falhar, o array antigo nao se perde
+    Point* novo =
+        realloc(p->geom.polygon.vertices, nova_capacidade * sizeof(Point));
     if (novo == NULL) {
       return false;
     }
@@ -300,19 +300,26 @@ bool polygon_add_vertex(Primitive* p, Point pt) {
     p->geom.polygon.capacity = nova_capacidade;
   }
 
-  p->geom.polygon.vertices[p->geom.polygon.num_vertices] = pt; //salva o ponto no array de vertices
-  p->geom.polygon.num_vertices++; //numero de vertices incremental
-  
-  p->is_aabb_dirty = true; // como a forma aumentou, a AABB tem de ser recalculada
+  p->geom.polygon.vertices[p->geom.polygon.num_vertices] = pt;
+  p->geom.polygon.num_vertices++;
+
+  // A forma mudou, por isso a AABB tem de ser recalculada
+  p->is_aabb_dirty = true;
   return true;
 }
 
 bool polygon_remove_vertex(Primitive* p, size_t index) {
-  if (p == NULL || index >= p->geom.polygon.num_vertices || p->type != PRIM_POLYGON) {
+  // O tipo tem de ser verificado antes de olhar para a union
+  if (p == NULL || p->type != PRIM_POLYGON) {
     return false;
   }
-  for (size_t i = index; i+1 < p->geom.polygon.num_vertices; i++) {
-    p->geom.polygon.vertices[i] = p->geom.polygon.vertices[i+1];
+  if (index >= p->geom.polygon.num_vertices) {
+    return false;
+  }
+
+  // Desloca os vertices seguintes uma posicao para a esquerda
+  for (size_t i = index; i + 1 < p->geom.polygon.num_vertices; i++) {
+    p->geom.polygon.vertices[i] = p->geom.polygon.vertices[i + 1];
   }
 
   p->geom.polygon.num_vertices--;
@@ -405,6 +412,14 @@ void primitive_translate(Primitive* p, double dx, double dy) {
   p->is_aabb_dirty = true;
 }
 
+// Auxiliar: afasta (ou aproxima) um ponto do centro, multiplicando a
+// distancia ao centro por factor.
+static Point scale_point_from_center(Point pt, Point centro, double factor) {
+  Point novo = {centro.x + (pt.x - centro.x) * factor,
+                centro.y + (pt.y - centro.y) * factor};
+  return novo;
+}
+
 void primitive_scale(Primitive* p, double factor) {
   if (p == NULL || factor <= 0.0) {
     return;
@@ -419,28 +434,22 @@ void primitive_scale(Primitive* p, double factor) {
       p->geom.rectangle.height *= factor;
       break;
     case PRIM_SEGMENT: {
-      Point centro = {
-          p->geom.segment.p1.x / 2.0 + p->geom.segment.p2.x / 2.0,
-          p->geom.segment.p1.y / 2.0 + p->geom.segment.p2.y / 2.0};
-      p->geom.segment.p1.x = centro.x +
-          (p->geom.segment.p1.x - centro.x) * factor;
-      p->geom.segment.p1.y = centro.y +
-          (p->geom.segment.p1.y - centro.y) * factor;
-      p->geom.segment.p2.x = centro.x +
-          (p->geom.segment.p2.x - centro.x) * factor;
-      p->geom.segment.p2.y = centro.y +
-          (p->geom.segment.p2.y - centro.y) * factor;
+      Point centro = {(p->geom.segment.p1.x + p->geom.segment.p2.x) / 2.0,
+                      (p->geom.segment.p1.y + p->geom.segment.p2.y) / 2.0};
+      p->geom.segment.p1 =
+          scale_point_from_center(p->geom.segment.p1, centro, factor);
+      p->geom.segment.p2 =
+          scale_point_from_center(p->geom.segment.p2, centro, factor);
       break;
     }
     case PRIM_POLYGON: {
-      // Atualiza a AABB antes de calcular o centro da escala.
+      // O centro e o da AABB; primitive_get_aabb garante que esta atualizada
       BoundingBox caixa = primitive_get_aabb(p);
-      Point centro = {caixa.min.x / 2.0 + caixa.max.x / 2.0,
-                      caixa.min.y / 2.0 + caixa.max.y / 2.0};
+      Point centro = {(caixa.min.x + caixa.max.x) / 2.0,
+                      (caixa.min.y + caixa.max.y) / 2.0};
       for (size_t i = 0; i < p->geom.polygon.num_vertices; i++) {
-        Point* vertice = &p->geom.polygon.vertices[i];
-        vertice->x = centro.x + (vertice->x - centro.x) * factor;
-        vertice->y = centro.y + (vertice->y - centro.y) * factor;
+        p->geom.polygon.vertices[i] = scale_point_from_center(
+            p->geom.polygon.vertices[i], centro, factor);
       }
       break;
     }
@@ -465,15 +474,14 @@ bool primitive_contains_point(const Primitive* p, Point pt) {
                                       p->geom.rectangle.height, pt);
 
     case PRIM_SEGMENT:
-      return math_segment_contains_point(p->geom.segment.p1,
-                                         p->geom.segment.p2,
+      return math_segment_contains_point(p->geom.segment.p1, p->geom.segment.p2,
                                          TOLERANCIA_SEGMENTO, pt);
 
     case PRIM_POLYGON:
       if (p->geom.polygon.num_vertices < 3) {
         return false;
       }
-      // Inclui a fronteira, que o ray-casting pode excluir.
+      // O contrato inclui as arestas e vertices, alem do interior.
       for (size_t i = 0, j = p->geom.polygon.num_vertices - 1;
            i < p->geom.polygon.num_vertices; j = i++) {
         if (math_segment_contains_point(p->geom.polygon.vertices[j],
