@@ -1,0 +1,9 @@
+
+# Ficheiros gerados pela compilacao
+*.o
+*.exe
+/src/benchmark
+/src/demo_app
+/src/unit_tests
+/src/meus_testes
+/src/renderizar
