@@ -61,13 +61,16 @@ static bool save_ppm_image(const char* filename, int width, int height,
     return false;
   }
 
-  fprintf(file, "P6\n%d %d\n255\n", width, height);
+  bool ok = fprintf(file, "P6\n%d %d\n255\n", width, height) >= 0;
 
   size_t total_bytes = (size_t)width * height * 3;
   size_t written = fwrite(pixel_buffer, 1, total_bytes, file);
-  fclose(file);
-
-  return written == total_bytes;
+  ok = ok && written == total_bytes && !ferror(file);
+  // Uma escrita em buffer pode falhar apenas ao fechar o ficheiro.
+  if (fclose(file) != 0) {
+    ok = false;
+  }
+  return ok;
 }
 
 // ============================================================================
@@ -468,6 +471,11 @@ Primitive* vector_scene_pick_top_primitive(const VectorScene* scene, Point pt,
 static void draw_primitive(uint8_t* pixels, int w, int h, Primitive* p) {
   BoundingBox caixa = primitive_get_aabb(p);
 
+  // Recorta antes de converter para int, mesmo com coordenadas muito grandes.
+  if (caixa.max.x < 0 || caixa.max.y < 0 ||
+      caixa.min.x >= w || caixa.min.y >= h) {
+    return;
+  }
   int x0 = (int)fmax(0, floor(caixa.min.x));
   int y0 = (int)fmax(0, floor(caixa.min.y));
   int x1 = (int)fmin(w - 1, ceil(caixa.max.x));
@@ -597,8 +605,44 @@ bool vector_scene_save_text(const VectorScene* scene, const char* filename) {
     }
   }
 
-  fclose(file);
-  return true;
+  bool ok = !ferror(file);
+  if (fclose(file) != 0) {
+    ok = false;
+  }
+  return ok;
+}
+
+// Le uma linha completa: 1 = linha lida, 0 = fim do ficheiro, -1 = erro.
+// O buffer cresce para aceitar poligonos com muitos vertices.
+static int ler_linha(FILE* file, char** linha, size_t* capacidade) {
+  size_t tamanho = 0;
+  int c;
+  while ((c = fgetc(file)) != EOF) {
+    if (tamanho + 1 >= *capacidade) {
+      if (*capacidade > SIZE_MAX / 2) {
+        return -1;
+      }
+      size_t nova_capacidade = *capacidade == 0 ? 1024 : *capacidade * 2;
+      char* nova = realloc(*linha, nova_capacidade);
+      if (nova == NULL) {
+        return -1;
+      }
+      *linha = nova;
+      *capacidade = nova_capacidade;
+    }
+    (*linha)[tamanho++] = (char)c;
+    if (c == '\n') {
+      break;
+    }
+  }
+  if (ferror(file)) {
+    return -1;
+  }
+  if (tamanho == 0) {
+    return 0;
+  }
+  (*linha)[tamanho] = '\0';
+  return 1;
 }
 
 VectorScene* vector_scene_load_text(const char* filename) {
@@ -611,10 +655,12 @@ VectorScene* vector_scene_load_text(const char* filename) {
     return NULL;
   }
 
-  char line[1024];
+  char* line = NULL;
+  size_t capacidade = 0;
   VectorScene* scene = NULL;
+  int leitura;
 
-  while (fgets(line, sizeof(line), file)) {
+  while ((leitura = ler_linha(file, &line, &capacidade)) == 1) {
     if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') {
       continue;
     }
@@ -746,10 +792,15 @@ VectorScene* vector_scene_load_text(const char* filename) {
     }
   }
 
+  if (leitura < 0) {
+    goto erro_leitura;
+  }
+  free(line);
   fclose(file);
   return scene;
 
 erro_leitura:
+  free(line);
   fclose(file);
   vector_scene_destroy(scene);
   return NULL;

@@ -394,6 +394,94 @@ static void teste_regressoes(void) {
   }
 }
 
+static void teste_ficheiros_e_coordenadas_extremas(void) {
+  printf("- linhas grandes, erros de escrita e formas fora da imagem\n");
+
+  VectorScene* cena = vector_scene_create(20, 20, PRETO);
+  Primitive* poly = primitive_create_polygon(1, PRETO, 1, 0);
+  if (cena == NULL || poly == NULL) {
+    VERIFICA(false, "criar cena e poligono para o teste");
+    primitive_destroy(poly);
+    vector_scene_destroy(cena);
+    return;
+  }
+  bool vertices_ok = true;
+  for (int i = 0; i < 200; i++) {
+    if (!polygon_add_vertex(poly, (Point){i, i % 7})) vertices_ok = false;
+  }
+  VERIFICA(vertices_ok, "criar 200 vertices");
+  int id = vector_scene_add_primitive(cena, poly);
+  VERIFICA(id == 1, "adicionar poligono grande");
+  if (id < 0) primitive_destroy(poly);
+  VERIFICA(vector_scene_save_text(cena, "teste_linha_grande.vsc"),
+           "gravar poligono numa linha com mais de 1024 caracteres");
+  VectorScene* lida = vector_scene_load_text("teste_linha_grande.vsc");
+  VERIFICA(lida != NULL, "reler o ficheiro gravado pelo programa");
+  Primitive* copia = vector_scene_get_primitive_by_id(lida, 1);
+  vertices_ok = copia != NULL && polygon_get_num_vertices(copia) == 200;
+  if (vertices_ok) {
+    for (int i = 0; i < 200; i++) {
+      Point pt = copia->geom.polygon.vertices[i];
+      if (pt.x != i || pt.y != i % 7) vertices_ok = false;
+    }
+  }
+  VERIFICA(vertices_ok, "todos os vertices mantem as coordenadas");
+  vector_scene_destroy(lida);
+  vector_scene_destroy(cena);
+  remove("teste_linha_grande.vsc");
+
+  FILE* f = fopen("teste_sem_nova_linha.vsc", "w");
+  VERIFICA(f != NULL, "criar ficheiro sem newline final");
+  if (f != NULL) {
+    fputs("SCENE 20 20 0 0 0\nCIRC 1 0 0 0 0 1 10 10 2", f);
+    fclose(f);
+    lida = vector_scene_load_text("teste_sem_nova_linha.vsc");
+    VERIFICA(lida != NULL && vector_scene_get_count(lida) == 1,
+             "ultima linha sem newline nao se perde");
+    vector_scene_destroy(lida);
+    remove("teste_sem_nova_linha.vsc");
+  }
+
+  cena = vector_scene_create(20, 20, PRETO);
+  if (cena == NULL) {
+    VERIFICA(false, "criar cena para testar render");
+    return;
+  }
+#ifdef __linux__
+  // /dev/full simula uma escrita sem espaco, sem encher o disco.
+  VERIFICA(!vector_scene_save_text(cena, "/dev/full"),
+           "guardar texto sinaliza erro de escrita");
+  VERIFICA(!vector_scene_render(cena, "/dev/full"),
+           "guardar imagem sinaliza erro de escrita ao fechar");
+#endif
+
+  Point centros[] = {{1e20, 10}, {-1e20, 10}, {10, 1e20}, {10, -1e20}};
+  for (size_t i = 0; i < 4; i++) {
+    Primitive* p = primitive_create_circle(-1, centros[i], 2,
+                                           (Color){255, 255, 255}, 1, 0);
+    int novo_id = vector_scene_add_primitive(cena, p);
+    VERIFICA(novo_id >= 0, "adicionar circulo distante");
+    if (novo_id < 0) primitive_destroy(p);
+  }
+  VERIFICA(vector_scene_render(cena, "teste_fora_imagem.ppm"),
+           "render ignora formas muito afastadas");
+  f = fopen("teste_fora_imagem.ppm", "rb");
+  VERIFICA(f != NULL, "abrir imagem gerada");
+  if (f != NULL) {
+    int w, h, maximo;
+    bool fundo_ok = fscanf(f, "P6 %d %d %d", &w, &h, &maximo) == 3;
+    fundo_ok = fundo_ok && w == 20 && h == 20 && maximo == 255;
+    if (fgetc(f) != '\n') fundo_ok = false;
+    for (int i = 0; i < 20 * 20 * 3; i++) {
+      if (fgetc(f) != 0) fundo_ok = false;
+    }
+    VERIFICA(fundo_ok, "formas exteriores nao alteram nenhum pixel");
+    fclose(f);
+  }
+  remove("teste_fora_imagem.ppm");
+  vector_scene_destroy(cena);
+}
+
 int main(void) {
   printf("=== Testes proprios ===\n");
   teste_poligono_cresce_e_remove();
@@ -404,6 +492,7 @@ int main(void) {
   teste_picking();
   teste_render_e_ficheiros();
   teste_regressoes();
+  teste_ficheiros_e_coordenadas_extremas();
 
   printf("=== %d/%d passaram (%d falhas) ===\n", total - falhas, total, falhas);
   return falhas == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
